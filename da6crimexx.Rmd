@@ -1,0 +1,121 @@
+---
+title: "Toronto Crime Analysis in R"
+output: html_notebook
+---
+
+Data was obtained from: https://data.torontopolice.on.ca/datasets/mci-2014-to-2019/
+
+### Date Preparation 🔬
+
+```{r}
+install.packages("tidyverse")
+install.packages("data.table")
+install.packages("lubridate")
+install.packages("ggmaps")
+install.packages("maps")
+install.packages("mapdata")
+install.packages("ggrepel")
+```
+
+```{r}
+library(tidyverse) 
+library(data.table) 
+library(lubridate) 
+library(ggmap) 
+library(maps) 
+library(mapdata)
+library(ggrepel)
+library(forcats)
+```
+
+```{r}
+#Import data
+crime <- as.data.frame(read.csv("toronto_crimes.csv"))
+```
+
+### Time to clean and select relevant variables 🧼
+```{r}
+crime_selected <- select(crime, 'occurrencedate', 'occurrencemonth', 'occurrenceday', 'occurrencedayofweek', 'occurrenceyear', 'occurrencehour', 'offence', 'MCI', 'Neighbourhood', 'Long', 'Lat')
+```
+
+```{r}
+#Remove the trailing zeros in the date column so we can filter the data by date
+crime_selected$occurrencedate <- str_remove(crime_selected$occurrencedate, "00:00:00\\+00")
+
+```
+### Crime in 2017 🚓
+```{r}
+
+crime_2017 <- filter(crime_selected, `occurrencedate` >= as_date("2017-01-01"), `occurrencedate` <= as_date("2017-12-30"))
+
+```
+```{r}
+#grouping by offence 
+g2017 <- crime_2017 %>%group_by(offence) %>%
+  summarise(total = n()) %>%
+  distinct() %>%
+  top_n(10)
+```
+```{r}
+g2017 %>% 
+  mutate(offence = fct_reorder(offence, total)) %>%
+  ggplot( aes(x=offence, y=total)) +
+    geom_bar(stat="identity", fill="#f68060", alpha=.6, width=.4) +
+    coord_flip() +
+    xlab("") +
+    labs(title="Top 10 Crimes Commited in 2017", x ="Offence", y = "Total Incidents") +
+    theme_bw()
+```
+
+### Top 5 Neighbourhoods With Highest Assault Incidents 2017 - 2019 
+```{r}
+assault_total <- filter(crime_selected, `occurrencedate` >= as_date("2017-01-01"), `occurrencedate` <= as_date("2019-12-30"), offence == 'Assault')
+```
+```{r}
+#group by neighbourhood
+assaultTest <- assault_total  %>%
+  group_by(occurrenceyear, Neighbourhood) %>%
+  summarise(total = n()) %>%
+  distinct() %>%
+  top_n(5)
+```
+```{r}
+assaultTest %>% 
+  mutate(Neighbourhood = fct_reorder(Neighbourhood, total)) %>%
+  ggplot(aes(x =Neighbourhood, y = total)) +
+  geom_bar(stat="identity", fill="#93b793", alpha=.6, width=.4) +
+    coord_flip() +
+    xlab("") +
+    labs(title="Top 5 Neighbourhoods With Highest Assault Incidents", x ="Neighbourhood", y = "Total Incidents") +
+    theme_bw() + 
+   facet_wrap(~ occurrenceyear)
+
+```
+
+### Mapping Assault in the Downtown Core
+```{r}
+
+register_google(key = "xx")
+```
+
+```{r}
+toronto <- get_map(location ="toronto", color = "bw",  zoom = 15)
+mapping <- crime_2017 %>%
+  select(offence, Long, Lat, occurrencedayofweek) %>%
+  filter(offence == 'Assault' ) %>%
+  na.omit()
+
+```
+```{r}
+torontomap <- toronto %>%
+  ggmap(base_layer =ggplot (aes(x = Long, y = Lat), data = mapping)) + 
+  stat_density2d(aes(x = Long, y = Lat, fill = ..level.., alpha = ..level..),
+  bins = 12, geom = "polygon", data = mapping ) +
+  facet_wrap(~occurrencedayofweek, nrow = 2)  + scale_fill_gradient(low = "green", high = "red", 
+    guide = FALSE) + scale_alpha(range = c(0, 0.3), guide = FALSE)
+
+torontomap
+```
+
+
+
